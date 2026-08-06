@@ -72,7 +72,11 @@ say "installing shell (ROM picker + PWA + save flush)"
 cp "$SHELL_DIR/index.html"           "$DIST/index.html"
 cp "$SHELL_DIR/manifest.webmanifest" "$DIST/manifest.webmanifest"
 cp "$SHELL_DIR/sw.js"                "$DIST/sw.js"
-cp "$SHELL_DIR/icon-512.png"         "$DIST/icon-512.png"
+# Icons + favicons (all sizes, maskable, apple-touch).
+for asset in icon-192.png icon-512.png icon-maskable-512.png \
+             apple-touch-icon.png favicon-32.png favicon.ico; do
+  cp "$SHELL_DIR/$asset" "$DIST/$asset"
+done
 
 say "build complete: $DIST ($(du -sh "$DIST" | cut -f1))"
 
