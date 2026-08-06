@@ -37,6 +37,10 @@ jobs:
       - name: Build web app (clone + patch gen1recomp, run love.js)
         run: bash build.sh
       - uses: actions/configure-pages@v5
+        # enablement lets the first workflow run turn Pages on (source =
+        # GitHub Actions) without visiting Settings → Pages by hand.
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
