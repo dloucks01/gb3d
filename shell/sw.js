@@ -1,4 +1,4 @@
-/* Gen1Recomp (Web) service worker — offline cache.
+/* gb3d service worker — offline cache.
  *
  * Precaches the whole self-contained build so that, once loaded, the game
  * launches with no network at all (Add to Home Screen -> open in airplane
@@ -7,7 +7,7 @@
  * All URLs are relative to this file's directory, so the same worker works no
  * matter what subpath GitHub Pages serves the build under.
  */
-const CACHE = 'gen1recomp-web-v1';
+const CACHE = 'gb3d-v1';
 
 const ASSETS = [
   '.', 'index.html',
