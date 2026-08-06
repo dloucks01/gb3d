@@ -7,12 +7,14 @@
  * All URLs are relative to this file's directory, so the same worker works no
  * matter what subpath GitHub Pages serves the build under.
  */
-const CACHE = 'gb3d-v1';
+const CACHE = 'gb3d-v2';
 
 const ASSETS = [
   '.', 'index.html',
   'game.js', 'love.js', 'love.wasm', 'game.data',
-  'manifest.webmanifest', 'icon-512.png',
+  'manifest.webmanifest',
+  'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
+  'apple-touch-icon.png', 'favicon-32.png', 'favicon.ico',
   'theme/love.css', 'theme/bg.png',
 ];
 
