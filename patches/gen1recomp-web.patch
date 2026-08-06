@@ -49,10 +49,10 @@ index cb57bc3..f6e12ad 100644
    if editorMode and EditorApp.mousepressed then
 diff --git a/src/compat/luabit.lua b/src/compat/luabit.lua
 new file mode 100644
-index 0000000..15ef50e
+index 0000000..11aef67
 --- /dev/null
 +++ b/src/compat/luabit.lua
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,133 @@
 +-- Pure-Lua reimplementation of the LuaJIT `bit` library (LuaBitOp API), used
 +-- only on the love.js / emscripten Web build, whose Lua 5.1 core ships neither
 +-- LuaJIT's `bit` module nor Lua 5.3 bitwise operators. The engine's ROM
@@ -63,6 +63,11 @@ index 0000000..15ef50e
 +-- is returned as a SIGNED 32-bit number (bit 31 set => negative), so results
 +-- are identical to the native library the desktop/mobile builds use. Doubles
 +-- represent 32-bit integers exactly, so the arithmetic below is exact.
++--
++-- Performance: band/bor/bxor sit on a hot path -- the audio synth calls them
++-- per sample. Instead of looping over 32 bits per call, precompute 256x256 byte
++-- result tables once at load and combine the four bytes of each operand with a
++-- handful of lookups: exact, and several times faster than a per-bit loop.
 +
 +local floor = math.floor
 +
@@ -82,45 +87,62 @@ index 0000000..15ef50e
 +  return x
 +end
 +
-+-- Bitwise combine two unsigned 32-bit values one bit at a time. `f` maps a pair
-+-- of bits (0/1) to a result bit. Kept in one helper so band/bor/bxor share it.
-+local function combine(a, b, f)
-+  a = u32(a)
-+  b = u32(b)
-+  local r, p = 0, 1
-+  for _ = 1, 32 do
-+    local abit = a % 2
-+    local bbit = b % 2
-+    if f(abit, bbit) == 1 then r = r + p end
-+    a = (a - abit) / 2
-+    b = (b - bbit) / 2
-+    p = p * 2
++-- Byte result tables: AND[a][b], OR[a][b], XOR[a][b] for a,b in 0..255. Built
++-- once with a per-bit inner loop -- this runs a single time at load, never on
++-- the hot path.
++local AND, OR, XOR = {}, {}, {}
++for a = 0, 255 do
++  local ta, to, tx = {}, {}, {}
++  for b = 0, 255 do
++    local rand, ror, rxor, p = 0, 0, 0, 1
++    local aa, bb = a, b
++    for _ = 1, 8 do
++      local abit, bbit = aa % 2, bb % 2
++      if abit == 1 and bbit == 1 then rand = rand + p end
++      if abit == 1 or  bbit == 1 then ror  = ror  + p end
++      if abit ~= bbit             then rxor = rxor + p end
++      aa = (aa - abit) / 2
++      bb = (bb - bbit) / 2
++      p = p * 2
++    end
++    ta[b] = rand; to[b] = ror; tx[b] = rxor
 +  end
-+  return r
++  AND[a] = ta; OR[a] = to; XOR[a] = tx
 +end
 +
-+local function fand(x, y) return (x == 1 and y == 1) and 1 or 0 end
-+local function forr(x, y) return (x == 1 or y == 1) and 1 or 0 end
-+local function fxor(x, y) return (x ~= y) and 1 or 0 end
++-- Combine two operands byte-by-byte through one of the tables above.
++local function bytewise(a, b, T)
++  a = u32(a); b = u32(b)
++  local a0 = a % 256; a = (a - a0) / 256
++  local a1 = a % 256; a = (a - a1) / 256
++  local a2 = a % 256; local a3 = (a - a2) / 256
++  local b0 = b % 256; b = (b - b0) / 256
++  local b1 = b % 256; b = (b - b1) / 256
++  local b2 = b % 256; local b3 = (b - b2) / 256
++  return T[a0][b0]
++       + T[a1][b1] * 256
++       + T[a2][b2] * 65536
++       + T[a3][b3] * 16777216
++end
 +
 +local bit = {}
 +
 +-- band/bor/bxor accept two or more operands, folding left, like LuaBitOp.
 +function bit.band(a, b, ...)
-+  local r = combine(a, b, fand)
-+  for i = 1, select("#", ...) do r = combine(r, (select(i, ...)), fand) end
++  local r = bytewise(a, b, AND)
++  for i = 1, select("#", ...) do r = bytewise(r, (select(i, ...)), AND) end
 +  return tosigned(r)
 +end
 +
 +function bit.bor(a, b, ...)
-+  local r = combine(a, b, forr)
-+  for i = 1, select("#", ...) do r = combine(r, (select(i, ...)), forr) end
++  local r = bytewise(a, b, OR)
++  for i = 1, select("#", ...) do r = bytewise(r, (select(i, ...)), OR) end
 +  return tosigned(r)
 +end
 +
 +function bit.bxor(a, b, ...)
-+  local r = combine(a, b, fxor)
-+  for i = 1, select("#", ...) do r = combine(r, (select(i, ...)), fxor) end
++  local r = bytewise(a, b, XOR)
++  for i = 1, select("#", ...) do r = bytewise(r, (select(i, ...)), XOR) end
 +  return tosigned(r)
 +end
 +

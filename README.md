@@ -32,10 +32,14 @@ which compiles LÖVE to WebAssembly. It runs the **real gen1recomp engine**.
 1. Open the deployed URL (see **Deploy** below) in **Safari**.
 2. Tap **Choose ROM** and pick your clean US Red/Blue/Yellow `.gb`/`.gbc`
    (exactly 1 MiB). It’s verified on-device and imported in a few seconds.
-3. Play with the on-screen touch controls. In **Options** turn on the **3D
-   tilt** — that’s the thing to judge for smoothness.
+3. Play with the on-screen touch controls — or pair an **MFi / Xbox / PS
+   controller** in iOS Settings and the engine’s native gamepad mapping picks it
+   up. In **Options** turn on the **3D tilt** — that’s the thing to judge for
+   smoothness. The screen stays awake while you play.
 4. **Share → Add to Home Screen** for a fullscreen, offline launcher icon.
    Saves and your imported game are kept in the browser’s storage.
+5. Use the **☰** menu (top-left) to **back up or restore your save** to a file —
+   before clearing Safari storage, or to move your game to another device.
 
 > Nothing is uploaded. The ROM is read in the browser, decoded to a private
 > cache, then discarded. Supply only a ROM you’re legally entitled to.
@@ -85,7 +89,9 @@ builds untouched:
 2. **No `bit` library.** LÖVE normally runs LuaJIT, whose `bit` module the ROM
    extractor, save code and audio synth `require`. A pure-Lua, LuaBitOp-
    compatible `bit` (`src/compat/luabit.lua`, known-answer-tested) is registered
-   under the same name on Web.
+   under the same name on Web. Its `band`/`bor`/`bxor` combine operands through
+   precomputed 256×256 byte lookup tables rather than a per-bit loop, keeping the
+   interpreted audio synth (which calls them per sample) cheap.
 3. **ROM import on the web.** No native picker or working drag-drop, so the shell
    writes the chosen ROM to a fixed path in the emscripten FS and a small web
    poll (`RomImporter:_pollWebRom`) reads it via Lua `io` (PhysFS caches the save

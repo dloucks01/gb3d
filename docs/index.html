@@ -39,6 +39,19 @@
       opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; }
     #toast.show { opacity: 1; }
     input[type=file] { display: none; }
+    /* Top-left menu (save backup / restore), present during play. */
+    #menuFab { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 8px;
+      z-index: 9; background: rgba(11,34,47,.82); color: #cfe6f4; border: 1px solid #2a6f86;
+      border-radius: 10px; padding: 7px 12px; font-size: 15px; font-weight: 700; display: none; }
+    #menu { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 46px); left: 8px;
+      z-index: 12; background: rgba(6,22,34,.97); border: 1px solid #2a6f86; border-radius: 12px;
+      padding: 8px; display: none; flex-direction: column; gap: 6px; min-width: 176px; }
+    #menu.open { display: flex; }
+    #menu button { -webkit-appearance: none; appearance: none; text-align: left; border: 0;
+      border-radius: 8px; padding: 11px 13px; font-size: 14px; font-weight: 600;
+      color: #dff1fb; background: rgba(42,111,134,.35); cursor: pointer; }
+    #menu button:active { transform: translateY(1px); }
+    #menu .note { font-size: 11px; opacity: .6; padding: 2px 4px 4px; line-height: 1.35; }
   </style>
 </head>
 <body>
@@ -57,8 +70,18 @@
   </div>
 
   <button id="romFab">＋ ROM</button>
+
+  <button id="menuFab" aria-label="Save menu">☰</button>
+  <div id="menu">
+    <button id="mBackup">⬇︎&nbsp; Back up save</button>
+    <button id="mRestore">⬆︎&nbsp; Restore save</button>
+    <div class="note">Exports your imported game &amp; battery saves to a file, so
+      progress survives clearing browser storage or moves to another device.</div>
+  </div>
+
   <div id="toast"></div>
   <input type="file" id="romInput" accept=".gb,.gbc,application/octet-stream">
+  <input type="file" id="restoreInput" accept=".json,application/json">
 
   <script>
     // ---- ROM drop path: the Lua web shim (RomImporter:_pollWebRom) reads this
@@ -119,6 +142,7 @@
       romBtn.style.display = 'inline-block';
       hint.style.display = 'block';
       romFab.style.display = 'block';
+      menuFab.style.display = 'block';
     }
 
     // ---- ROM file selection -> write to the emscripten FS -------------------
@@ -130,6 +154,7 @@
           if (!Module.FS) { toast('Engine not ready yet — try again.'); return; }
           Module.FS.writeFile(ROM_DROP_PATH, bytes);
           overlay.style.display = 'none';         // hand the screen to the game
+          acquireWakeLock();                      // keep the screen awake in-game
           toast('Importing ' + file.name + '…');
         } catch (e) { toast('Could not load file: ' + e.message); }
       };
@@ -166,6 +191,121 @@
     document.addEventListener('visibilitychange', function(){ if (document.hidden) persist(); });
     window.addEventListener('pagehide', persist);
     window.addEventListener('beforeunload', persist);
+
+    // ---- Screen wake lock: keep the display awake during play --------------
+    var wakeLock = null;
+    function acquireWakeLock() {
+      try {
+        if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+          navigator.wakeLock.request('screen').then(function(lock){
+            wakeLock = lock;
+            wakeLock.addEventListener('release', function(){ wakeLock = null; });
+          }).catch(function(){ /* denied — ignore */ });
+        }
+      } catch (e) { /* unsupported — ignore */ }
+    }
+    // Wake locks drop when the tab is backgrounded; re-acquire on return.
+    document.addEventListener('visibilitychange', function(){
+      if (document.visibilityState === 'visible' && overlay.style.display === 'none') acquireWakeLock();
+    });
+
+    // ---- Gamepad: the engine maps controllers natively (love.js/SDL bridges
+    // the browser Gamepad API to love.gamepadpressed + GamepadMap). Nothing to
+    // plumb here — just surface connect state so the player gets feedback.
+    window.addEventListener('gamepadconnected', function(e){
+      var id = (e.gamepad && e.gamepad.id) ? e.gamepad.id.replace(/\s*\(.*\)\s*$/, '').trim() : '';
+      toast('🎮 ' + (id || 'Controller') + ' connected');
+    });
+    window.addEventListener('gamepaddisconnected', function(){ toast('🎮 Controller disconnected'); });
+
+    // ---- Save backup / restore ---------------------------------------------
+    // Export & re-import the LÖVE save directory (imported game cache + battery
+    // saves) directly over the emscripten FS the build exposes on Module.FS.
+    var menuFab      = document.getElementById('menuFab');
+    var menu         = document.getElementById('menu');
+    var restoreInput = document.getElementById('restoreInput');
+    // Save root across love.js layouts; the game's identity is "pokemon-love2d".
+    var SAVE_ROOTS = [
+      '/home/web_user/.local/share/love/pokemon-love2d',
+      '/home/web_user/love/pokemon-love2d',
+      '/home/web_user/love'
+    ];
+    function saveRoot() {
+      if (!Module.FS) return null;
+      for (var i = 0; i < SAVE_ROOTS.length; i++) {
+        try { if (Module.FS.isDir(Module.FS.stat(SAVE_ROOTS[i]).mode)) return SAVE_ROOTS[i]; } catch (e) {}
+      }
+      return null;
+    }
+    function b64enc(u8) {                 // chunked so large files don't blow the stack
+      var CH = 0x8000, s = '';
+      for (var i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+      return btoa(s);
+    }
+    function b64dec(b64) {
+      var s = atob(b64), u8 = new Uint8Array(s.length);
+      for (var i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+      return u8;
+    }
+    function walkFiles(dir, base, out) {
+      Module.FS.readdir(dir).forEach(function(name){
+        if (name === '.' || name === '..') return;
+        var p = dir + '/' + name, rel = base ? base + '/' + name : name;
+        if (Module.FS.isDir(Module.FS.stat(p).mode)) walkFiles(p, rel, out);
+        else out[rel] = b64enc(Module.FS.readFile(p));
+      });
+    }
+    function mkdirp(dir) {
+      var cur = '';
+      dir.split('/').filter(Boolean).forEach(function(part){
+        cur += '/' + part;
+        try { Module.FS.mkdir(cur); } catch (e) { /* exists */ }
+      });
+    }
+    function backupSave() {
+      var root = saveRoot();
+      if (!root) { toast('No save data yet — start a game first.'); return; }
+      var files = {};
+      try { walkFiles(root, '', files); } catch (e) { toast('Backup failed: ' + e.message); return; }
+      if (!Object.keys(files).length) { toast('Nothing to back up yet.'); return; }
+      var blob = new Blob([JSON.stringify({ app: 'gb3d', v: 1, root: root, files: files })],
+                          { type: 'application/json' });
+      var url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = 'gb3d-save-backup.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+      toast('Save backed up (' + Object.keys(files).length + ' files).');
+    }
+    function restoreSave(file) {
+      var reader = new FileReader();
+      reader.onload = function(){
+        var payload;
+        try { payload = JSON.parse(reader.result); } catch (e) { toast('Not a gb3d backup file.'); return; }
+        if (!payload || payload.app !== 'gb3d' || !payload.files) { toast('Not a gb3d backup file.'); return; }
+        var root = saveRoot() || payload.root || SAVE_ROOTS[0];
+        try {
+          Object.keys(payload.files).forEach(function(rel){
+            var full = root + '/' + rel;
+            mkdirp(full.substring(0, full.lastIndexOf('/')));
+            Module.FS.writeFile(full, b64dec(payload.files[rel]));
+          });
+          persist();                       // flush IDBFS → IndexedDB
+        } catch (e) { toast('Restore failed: ' + e.message); return; }
+        toast('Save restored — reloading…');
+        setTimeout(function(){ location.reload(); }, 900);
+      };
+      reader.readAsText(file);
+    }
+    function closeMenu(){ menu.classList.remove('open'); }
+    menuFab.addEventListener('click', function(e){ e.stopPropagation(); menu.classList.toggle('open'); });
+    menu.addEventListener('click', function(e){ e.stopPropagation(); });
+    document.getElementById('mBackup').addEventListener('click', function(){ closeMenu(); backupSave(); });
+    document.getElementById('mRestore').addEventListener('click', function(){ closeMenu(); restoreInput.click(); });
+    restoreInput.addEventListener('change', function(){
+      if (restoreInput.files && restoreInput.files[0]) restoreSave(restoreInput.files[0]);
+      restoreInput.value = '';
+    });
+    document.addEventListener('click', closeMenu);
 
     whenRunning(showPicker);
 
