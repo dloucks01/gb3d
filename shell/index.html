@@ -75,6 +75,10 @@
 
   <button id="menuFab" aria-label="Save menu">☰</button>
   <div id="menu">
+    <button id="mHires">High-res: <span id="hiresState">off</span></button>
+    <div class="note">Renders at full device resolution (sharper 3D) instead of
+      capping at 2×. Crisper, but heavier — try it if the frame rate holds.</div>
+    <div class="sep" style="height:1px;background:rgba(42,111,134,.5);margin:2px 0"></div>
     <button id="mBackup">⬇︎&nbsp; Back up save</button>
     <button id="mRestore">⬆︎&nbsp; Restore save</button>
     <div class="note">Exports your imported game &amp; battery saves to a file, so
@@ -104,9 +108,14 @@
     }
 
     // Size the drawing buffer to the device so rendering is crisp, not scaled.
+    // The DPR is capped at 2 by default (perf); the opt-in High-res setting
+    // lifts the cap to the device's real ratio (sharper 3D, heavier).
     var canvas = document.getElementById('canvas');
+    var HIRES_KEY = 'gb3d_hires';
+    function hiRes() { try { return localStorage.getItem(HIRES_KEY) === '1'; } catch (e) { return false; } }
     function sizeCanvas() {
-      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var cap = hiRes() ? (window.devicePixelRatio || 1) : 2;
+      var dpr = Math.min(window.devicePixelRatio || 1, cap);
       canvas.width  = Math.round(window.innerWidth  * dpr);
       canvas.height = Math.round(window.innerHeight * dpr);
     }
@@ -298,6 +307,17 @@
       };
       reader.readAsText(file);
     }
+    // High-res toggle: persist the choice and reload so the canvas/GL surface
+    // is re-created at the new resolution cleanly.
+    var hiresState = document.getElementById('hiresState');
+    hiresState.textContent = hiRes() ? 'on' : 'off';
+    document.getElementById('mHires').addEventListener('click', function(){
+      closeMenu();
+      try { localStorage.setItem(HIRES_KEY, hiRes() ? '0' : '1'); } catch (e) {}
+      toast('High-res ' + (hiRes() ? 'on' : 'off') + ' — reloading…');
+      setTimeout(function(){ location.reload(); }, 700);
+    });
+
     function closeMenu(){ menu.classList.remove('open'); }
     menuFab.addEventListener('click', function(e){ e.stopPropagation(); menu.classList.toggle('open'); });
     menu.addEventListener('click', function(e){ e.stopPropagation(); });

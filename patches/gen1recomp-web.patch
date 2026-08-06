@@ -251,3 +251,106 @@ index d950176..2868321 100644
    -- Pump the FlexLove view (input polling + the queued click actions).  The
    -- flag is only set once draw() has built a tree, so headless runs and the
    -- test tier never touch the toolkit.
+diff --git a/src/render/Renderer.lua b/src/render/Renderer.lua
+index 3b69e2d..591c41b 100644
+--- a/src/render/Renderer.lua
++++ b/src/render/Renderer.lua
+@@ -453,6 +453,14 @@ end
+ -- interpolation across the whole quad (no affine-warp seams) using the
+ -- exact same projection the billboards will anchor to.  false = headless /
+ -- no shader support, in which case the renderer stays on the flat blit.
++-- Tilt ground quality (prototype -- tune / A-B on real hardware):
++--   TILT_SUPERSAMPLE renders the colorized ground canvas at Nx before the
++--   perspective warp (1 = off, 2 = the author's TODO). With mipmaps this
++--   supersamples the far field so distant rows stop shimmering.
++--   TILT_FOG is the distance-haze strength in the shader below (0 = off).
++local TILT_SUPERSAMPLE = 2
++local TILT_FOG = 0.22
++
+ local TILT_SHADER = [[
+   varying float vScale;
+ #ifdef VERTEX
+@@ -464,8 +472,16 @@ local TILT_SHADER = [[
+   }
+ #endif
+ #ifdef PIXEL
++  extern float FogStrength;
+   vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+-    return Texel(tex, tc / vScale) * color;
++    vec2 uv = tc / vScale;
++    vec4 c = Texel(tex, uv) * color;
++    // The top of the ground plane (uv.y -> 0) is the far field; fade it toward
++    // a soft horizon haze so depth reads and the far edge doesn't pop.
++    float depth = 1.0 - clamp(uv.y, 0.0, 1.0);
++    float f = FogStrength * smoothstep(0.35, 1.0, depth);
++    c.rgb = mix(c.rgb, vec3(0.62, 0.70, 0.80), f);
++    return c;
+   }
+ #endif
+ ]]
+@@ -510,15 +526,31 @@ function Renderer:drawTiltedWorld(zoneList, sx, sy, wox, woy, target)
+   sy = sy or sx
+   local wvw = self.worldCanvas:getWidth()
+   local wvh = self.worldCanvas:getHeight()
++  local SS = TILT_SUPERSAMPLE
+ 
+   -- colorized ground canvas, resized to match the world canvas.  Linear
+   -- sampling softens the pixel shimmer the perspective warp would cause
+   -- (the flat path keeps nearest).  TODO(tilt): optionally render this at
+   -- 2x for extra crispness.
+-  if not self.tiltCanvas or self.tiltCanvas:getWidth() ~= wvw
+-     or self.tiltCanvas:getHeight() ~= wvh then
++  local cw, ch = wvw * SS, wvh * SS
++  if not self.tiltCanvas or self.tiltCanvas:getWidth() ~= cw
++     or self.tiltCanvas:getHeight() ~= ch then
+     if self.tiltCanvas and self.tiltCanvas.release then self.tiltCanvas:release() end
+-    self.tiltCanvas = PixelCanvas.new(wvw, wvh, "linear")
++    -- Prefer a mipmapped canvas so the perspective minification samples
++    -- pre-filtered levels (kills the distant shimmer/moire) with trilinear on
++    -- top; probe generateMipmaps once and fall back to a plain linear canvas
++    -- if the GL backend can't mipmap this target (e.g. WebGL1 + NPOT).
++    local ok, c = pcall(love.graphics.newCanvas, cw, ch, { dpiscale = 1, mipmaps = "manual" })
++    if ok and c and pcall(function() c:generateMipmaps() end) then
++      c:setFilter("linear", "linear")
++      pcall(function() c:setMipmapFilter("linear") end)
++      self.tiltCanvas = c
++      self.tiltMipmaps = true
++    else
++      if c and c.release then c:release() end
++      self.tiltCanvas = PixelCanvas.new(cw, ch, "linear")
++      self.tiltMipmaps = false
++    end
+   end
+ 
+   love.graphics.setCanvas(self.tiltCanvas)
+@@ -539,18 +571,19 @@ function Renderer:drawTiltedWorld(zoneList, sx, sy, wox, woy, target)
+       local x, y = math.max(0, z.x), math.max(0, z.y)
+       local x2, y2 = math.min(wvw, z.x + z.w), math.min(wvh, z.y + z.h)
+       if x2 > x and y2 > y then
+-        love.graphics.setScissor(x, y, x2 - x, y2 - y)
+-        love.graphics.draw(self.worldCanvas, 0, 0)
++        love.graphics.setScissor(x * SS, y * SS, (x2 - x) * SS, (y2 - y) * SS)
++        love.graphics.draw(self.worldCanvas, 0, 0, 0, SS, SS)
+       end
+     end
+     love.graphics.setScissor()
+     love.graphics.setShader()
+   else
+-    love.graphics.draw(self.worldCanvas, 0, 0)
++    love.graphics.draw(self.worldCanvas, 0, 0, 0, SS, SS)
+   end
+ 
+   -- project onto the tilted plane into the present target (or screen)
+   love.graphics.setCanvas(target)
++  if self.tiltMipmaps then pcall(function() self.tiltCanvas:generateMipmaps() end) end
+   mesh:setTexture(self.tiltCanvas)
+   mesh:setVertices(Tilt.meshCorners(wvw, wvh))
+   love.graphics.push()
+@@ -558,6 +591,7 @@ function Renderer:drawTiltedWorld(zoneList, sx, sy, wox, woy, target)
+   love.graphics.scale(sx, sy)
+   love.graphics.setColor(1, 1, 1, 1)
+   love.graphics.setShader(shader)
++  if TILT_FOG > 0 then pcall(function() shader:send("FogStrength", TILT_FOG) end) end
+   love.graphics.draw(mesh)
+   love.graphics.setShader()
+   love.graphics.pop()
