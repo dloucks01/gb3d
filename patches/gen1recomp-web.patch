@@ -1,8 +1,8 @@
 diff --git a/main.lua b/main.lua
-index cb57bc3..f6e12ad 100644
+index cb57bc3..2818688 100644
 --- a/main.lua
 +++ b/main.lua
-@@ -8,6 +8,34 @@
+@@ -8,6 +8,38 @@
  --     opens the editor on that slot's file, and restores the launcher when
  --     the editor's Close button is pressed (openEditor / closeEditor below)
  
@@ -21,6 +21,10 @@ index cb57bc3..f6e12ad 100644
 +  if not package.loaded["bit"] then
 +    package.loaded["bit"] = require("src.compat.luabit")
 +  end
++  -- LuaJIT exposes `bit` as a GLOBAL, and some engine code indexes it without a
++  -- require (e.g. src/import/Rom.lua's sprite bit-plane de-interlace). Mirror
++  -- that on Web so those references resolve instead of hitting a nil global.
++  if _G.bit == nil then _G.bit = package.loaded["bit"] end
 +
 +  local fs = love.filesystem
 +  local realRead = fs.read
@@ -37,7 +41,7 @@ index cb57bc3..f6e12ad 100644
  local editorMode = os.getenv("POKEPORT_EDITOR") == "1" or POKEPORT_EDITOR_MODE == true
  
  local SwitchDiagnostics = require("src.debug.SwitchDiagnostics")
-@@ -732,7 +760,8 @@ function love.mousepressed(x, y, button, istouch)
+@@ -732,7 +764,8 @@ function love.mousepressed(x, y, button, istouch)
      -- love.touch / mouse.isDown, so dropping the synthesized istouch press is
      -- safe. A real mouse (DeX, Chromebook, USB) still reaches mousepressed.
      if istouch and (love.system.getOS() == "Android"
