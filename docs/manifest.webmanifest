@@ -1,7 +1,7 @@
 {
-  "name": "Gen1Recomp (Web)",
-  "short_name": "Gen1Recomp",
-  "description": "Native LÖVE2D recreation of Pokémon Red/Blue/Yellow, running in the browser. Bring your own legal ROM.",
+  "name": "gb3d — Pokémon in 3D",
+  "short_name": "gb3d",
+  "description": "A no-install web build of the gen1recomp LÖVE2D engine — Pokémon Red/Blue/Yellow with 3D tilt mode, in the browser. Bring your own legal ROM; it never leaves your device.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

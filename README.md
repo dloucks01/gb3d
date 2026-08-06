@@ -101,8 +101,10 @@ shell flushes IDBFS to IndexedDB on a timer and on page hide (so saves survive).
 
 The engine is [bryanthaboi/gen1recomp](https://github.com/bryanthaboi/gen1recomp)
 — all game logic and the 3D renderer are theirs. This repo only adds the web
-packaging (love.js build, the web-compat patch, and the browser shell). See the
-gen1recomp repository for its license. gb3d ships **no ROM** and no game data.
+packaging (love.js build, the web-compat patch, and the browser shell), released
+under the [MIT License](LICENSE). That license covers **only** the packaging in
+this repo — the gen1recomp engine is licensed separately; see the gen1recomp
+repository for its terms. gb3d ships **no ROM** and no game data.
 
 ## Limitations
 
