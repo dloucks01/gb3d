@@ -190,6 +190,28 @@ index 0000000..11aef67
 +end
 +
 +return bit
+diff --git a/src/core/HostShell.lua b/src/core/HostShell.lua
+index 0c39e3c..bd98a5e 100644
+--- a/src/core/HostShell.lua
++++ b/src/core/HostShell.lua
+@@ -160,6 +160,17 @@ function HostShell.restart()
+   if not (love and love.event and love.event.quit) then return end
+ 
+   local osName = love.system and love.system.getOS and love.system.getOS()
++  if osName == "Web" then
++    -- love.js cannot re-run LÖVE's boot in-process: love.event.quit("restart")
++    -- re-inits physfs/graphics in the same wasm instance and dies with "Error
++    -- occurred before the game window could be initialized". Instead signal the
++    -- HTML shell (RomImporter-style sentinel at a fixed FS path) to reload the
++    -- page; a fresh love.js instance remounts the persisted IDBFS cache and
++    -- boots straight into the freshly imported game.
++    local f = io.open("/home/web_user/gen1_restart", "w")
++    if f then f:write("1"); f:close() end
++    return
++  end
+   if osName == "Android" then
+     -- restartApp kills the process on success, so a true return is never
+     -- observed; false means the bridge could not schedule the relaunch.
 diff --git a/src/core/TouchControls.lua b/src/core/TouchControls.lua
 index a2e3b22..e49b70b 100644
 --- a/src/core/TouchControls.lua

@@ -203,6 +203,29 @@
     window.addEventListener('pagehide', persist);
     window.addEventListener('beforeunload', persist);
 
+    // ---- Engine restart request --------------------------------------------
+    // love.js can't re-run LÖVE's boot in-process, so the Lua side
+    // (HostShell.restart on Web) drops this sentinel after an import to reboot
+    // into the game. Flush the FS to IndexedDB, then reload: a fresh love.js
+    // instance remounts the persisted cache and boots straight into the game.
+    var RESTART_FLAG = '/home/web_user/gen1_restart';
+    var restarting = false;
+    setInterval(function(){
+      if (restarting) return;
+      try {
+        if (Module && Module.calledRun && Module.FS) {
+          var found = true;
+          try { Module.FS.stat(RESTART_FLAG); } catch (e) { found = false; }
+          if (found) {
+            restarting = true;
+            try { Module.FS.unlink(RESTART_FLAG); } catch (e) {}
+            if (Module.FS.syncfs) Module.FS.syncfs(false, function(){ location.reload(); });
+            else location.reload();
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }, 500);
+
     // ---- Screen wake lock: keep the display awake during play --------------
     var wakeLock = null;
     function acquireWakeLock() {
