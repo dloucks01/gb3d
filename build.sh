@@ -78,7 +78,25 @@ for asset in icon-192.png icon-512.png icon-maskable-512.png \
   cp "$SHELL_DIR/$asset" "$DIST/$asset"
 done
 
-say "build complete: $DIST ($(du -sh "$DIST" | cut -f1))"
+# 6b. Content-hash the engine payload. GitHub Pages' CDN caches the large
+#     game.data / game.js pair by path and does not reliably purge them across
+#     deploys, so an unchanged filename can serve stale engine code for a long
+#     time even though index.html/sw.js update. Renaming both to a content hash
+#     makes every engine change a brand-new URL the CDN has never cached; the
+#     always-fresh index.html and sw.js are rewritten to point at them, and the
+#     service-worker cache version is derived from the same hash so it re-installs.
+say "content-hashing engine payload (defeats stale-CDN game.data)"
+H="$(sha256sum "$DIST/game.data" | cut -c1-12)"
+mv "$DIST/game.data" "$DIST/game.$H.data"
+mv "$DIST/game.js"   "$DIST/game.$H.js"
+sed -i "s/game\.data/game.$H.data/g"       "$DIST/game.$H.js"   # loader -> hashed data
+sed -i "s#src=\"game.js\"#src=\"game.$H.js\"#g" "$DIST/index.html"   # page  -> hashed loader
+sed -i "s/'game\.js'/'game.$H.js'/g; s/'game\.data'/'game.$H.data'/g" "$DIST/sw.js"  # precache hashed names
+sed -i "s/const CACHE = '[^']*'/const CACHE = 'gb3d-$H'/"        "$DIST/sw.js"        # bust SW cache by hash
+grep -q "game.$H.data" "$DIST/game.$H.js" || { echo "error: game.js data-name rewrite failed" >&2; exit 1; }
+grep -q "game.$H.js"   "$DIST/index.html" || { echo "error: index.html loader rewrite failed" >&2; exit 1; }
+
+say "build complete: $DIST ($(du -sh "$DIST" | cut -f1)) [payload hash $H]"
 
 # 7. Optionally stage into docs/ for GitHub Pages (deploy-from-branch).
 if [ "$PAGES" = "1" ]; then
