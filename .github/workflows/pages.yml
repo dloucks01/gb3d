@@ -1,20 +1,20 @@
 name: Deploy gb3d to Pages
 
-# Publishes the committed, prebuilt site in docs/ to GitHub Pages.
+# Smoke-tests the committed docs/ build headlessly, THEN publishes it. The build
+# is produced and committed locally (./build.sh --pages); this workflow gates the
+# deploy on a boot test so a broken build can never reach Pages. love.js is
+# non-deterministic, so we deploy the exact committed bytes rather than rebuild.
 #
-# We deliberately do NOT rebuild from source here: love.js packaging is
-# non-deterministic (a fresh build produces a different game.data every run),
-# so building on CI made each deploy a different payload and the CDN served an
-# inconsistent mix across deploys. Instead the site is built + verified locally,
-# committed to docs/, and this workflow just uploads that exact directory —
-# deterministic, and identical to what "Deploy from a branch → /docs" would
-# serve. To refresh the build, run ./build.sh --pages locally and commit docs/.
+# Full-coverage tier: set a repo secret TEST_ROM_B64 to a base64 1 MiB US
+# Red/Blue/Yellow ROM and the smoke test also imports it and asserts the game
+# boots into play without crashing (catches engine regressions, not just boot).
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'docs/**'
+      - 'test/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -28,7 +28,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Playwright + Chromium
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm install playwright
+          npx playwright install --with-deps chromium
+      - name: Headless boot smoke test against docs/
+        env:
+          BASE_URL: http://127.0.0.1:8080
+          TEST_ROM_B64: ${{ secrets.TEST_ROM_B64 }}
+        run: |
+          python3 -m http.server 8080 --directory docs --bind 127.0.0.1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8080/index.html >/dev/null && break; sleep 1; done
+          node test/smoke.mjs
+
   deploy:
+    needs: smoke
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -36,8 +58,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-        # enablement turns Pages on (source = GitHub Actions) on the first run
-        # without visiting Settings → Pages by hand.
         with:
           enablement: true
       - uses: actions/upload-pages-artifact@v3
