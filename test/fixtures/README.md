@@ -2,8 +2,9 @@
 
 ## `overworld-save.json`
 
-A tiny gen1recomp **Pokémon Blue** save that resumes in an overworld map
-(`REDS_HOUSE_2F`) — the only kind of map where the Mode-7 "3D" tilt renders.
+A tiny gen1recomp **Pokémon Blue** save that resumes **outside in Pallet Town**
+(`PALLET_TOWN`) — a free-roam overworld map, where the Mode-7 "3D" tilt renders
+over a rich outdoor scene (houses, fences, the pond).
 The smoke test (`test/smoke.mjs`, Tier 3) injects it before importing the ROM so
 the launcher shows a loaded slot, resumes straight into the overworld, and cycles
 the tilt through every level asserting no crash. Reaching that map from a fresh
@@ -16,7 +17,7 @@ It contains two files gen1recomp writes under its LOVE save dir
   list={"slot1"} }` plus `lastVersion="blue"`. Without this the launcher shows
   "0 slots" no matter what save files exist (see `src/core/SaveData.lua`: the
   registry lives in `options.lua`, not on disk-scan).
-- `saves/blue/slot1.lua` — the save state itself (player in `REDS_HOUSE_2F`).
+- `saves/blue/slot1.lua` — the save state itself (player in `PALLET_TOWN`).
 
 No ROM or copyrighted data is included — only this ~700-byte save state and the
 options file. The game's ROM-derived data/assets regenerate from the user's own

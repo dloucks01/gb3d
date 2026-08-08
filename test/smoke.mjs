@@ -11,7 +11,7 @@
 // have caught the bit/restart/audio regressions.
 //
 // Tier 3 (same ROM): injects a tiny committed save (test/fixtures) that resumes
-// in an overworld map, then cycles the Mode-7 "3D" tilt through every level and
+// outside in Pallet Town, then cycles the Mode-7 "3D" tilt through every level and
 // asserts no crash — the only tier that actually reaches a tilt-eligible map and
 // exercises the tilt renderer that crashed on device.
 //
@@ -112,7 +112,7 @@ if (haveRom) {
 // ---- Tier 3: resume a committed save into the overworld and cycle the tilt ---
 // Driving a fresh game all the way to the free-roam overworld (Oak's intro +
 // name entry) is slow and fragile, so instead we inject a tiny committed save
-// (test/fixtures/overworld-save.json) that resumes in an overworld map — the
+// (test/fixtures/overworld-save.json) that resumes outside in Pallet Town — an
 // only place the Mode-7 "3D" tilt renders. Then we cycle the tilt OFF->15->35
 // ->50->OFF and assert no crash. THIS is the tier that exercises the tilt
 // renderer that crashed on device; Tiers 1-2 never reach a tilt-eligible map.
