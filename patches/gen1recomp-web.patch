@@ -251,6 +251,24 @@ index 0c39e3c..bd98a5e 100644
    if osName == "Android" then
      -- restartApp kills the process on success, so a true return is never
      -- observed; false means the bridge could not schedule the relaunch.
+diff --git a/src/core/Music.lua b/src/core/Music.lua
+index be6ba0e..3fc09fe 100644
+--- a/src/core/Music.lua
++++ b/src/core/Music.lua
+@@ -191,6 +191,13 @@ local function stopSource(src)
+ end
+ 
+ local function newSource(file)
++  -- Streaming audio sources crash emscripten's OpenAL (love.js) the same way the
++  -- chiptune QueueableSource does, so skip file-based music on Web. Base Gen-1
++  -- music is all chiptune (def.chip, disabled separately in ChipAudio); this only
++  -- silences optional def.file tracks (mods) instead of crashing on them.
++  if love.system and love.system.getOS and love.system.getOS() == "Web" then
++    return nil, "streaming audio unavailable on web"
++  end
+   local ok, src = pcall(love.audio.newSource, file, "stream")
+   if ok and src then return src end
+   return nil, ok and "no source" or tostring(src)
 diff --git a/src/core/TouchControls.lua b/src/core/TouchControls.lua
 index a2e3b22..e49b70b 100644
 --- a/src/core/TouchControls.lua
