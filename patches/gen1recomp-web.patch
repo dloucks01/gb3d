@@ -1,3 +1,21 @@
+diff --git a/conf.lua b/conf.lua
+index 2894ffe..e46581b 100644
+--- a/conf.lua
++++ b/conf.lua
+@@ -50,6 +50,13 @@ function love.conf(t)
+     t.window.minheight = 360
+   end
+   t.version = love._os == "iOS" and "12.0" or "11.5"
++  -- love.js has no LÖVE 11.5 build (11.4.1 is the newest), so the game's 11.5
++  -- target triggers a "made for 11.5 / running 11.4" mismatch notice every boot.
++  -- On Web, declare the version actually running so the notice never shows; the
++  -- game runs fine on 11.4.
++  if love._os == "Web" and love.getVersion then
++    t.version = string.format("%d.%d", love.getVersion())
++  end
+   t.window.vsync = 1
+   t.modules.joystick = true
+   t.modules.physics = false
 diff --git a/main.lua b/main.lua
 index cb57bc3..2818688 100644
 --- a/main.lua
