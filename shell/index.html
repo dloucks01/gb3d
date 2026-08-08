@@ -150,6 +150,27 @@
       } catch (e) {}
     }
 
+    // ---- iOS audio unlock ---------------------------------------------------
+    // Emscripten/OpenAL creates a Web Audio context that iOS starts SUSPENDED
+    // until a user gesture, so sound effects are silent until the first tap.
+    // Wrap AudioContext to capture whatever the engine creates, then resume it
+    // on any user interaction. (Background music stays off on Web by design —
+    // its streaming source crashes emscripten's audio; SFX/cries are static.)
+    (function(){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      var pool = [];
+      function Captured(a){ var c = new AC(a); pool.push(c); return c; }
+      Captured.prototype = AC.prototype;
+      window.AudioContext = Captured;
+      if ('webkitAudioContext' in window) window.webkitAudioContext = Captured;
+      function unlock(){ for (var i = 0; i < pool.length; i++){ var c = pool[i];
+        if (c && c.state === 'suspended' && c.resume) { try { c.resume(); } catch (e) {} } } }
+      ['touchend','touchstart','pointerdown','mousedown','keydown'].forEach(function(ev){
+        window.addEventListener(ev, unlock, true);
+      });
+    })();
+
     // Size the drawing buffer to the device so rendering is crisp, not scaled.
     // The DPR is capped at 2 by default (perf); the opt-in High-res setting
     // lifts the cap to the device's real ratio (sharper 3D, heavier).
