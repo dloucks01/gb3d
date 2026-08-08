@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>gb3d engine — Phase 1</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b1622;color:#cfe6f4;font-family:system-ui,sans-serif;overflow:hidden}
+  #gl{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:#000;image-rendering:pixelated}
+  #hud{position:fixed;top:8px;left:8px;z-index:5;display:flex;gap:8px;align-items:center}
+  .btn{background:#153044;border:1px solid #2a6f86;color:#cfe6f4;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer}
+  #fps{font-size:12px;opacity:.7}
+  input[type=file]{display:none}
+</style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="hud">
+    <label class="btn" for="rom">Load ROM (.gb)</label>
+    <input id="rom" type="file" accept=".gb,.gbc">
+    <span id="fps"></span>
+  </div>
+  <script src="gbcore.bundle.js"></script>
+  <script src="engine.js"></script>
+  <script>
+    const GameBoyCore = window.GameBoyCore;
+    document.getElementById('rom').addEventListener('change', async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const buf = new Uint8Array(await f.arrayBuffer());
+      window.__loadROM(buf);
+    });
+    // Headless test hook: page.evaluate(b64 -> __loadROMb64)
+    window.__loadROMb64 = (b64) => {
+      const bin = atob(b64), u = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      window.__loadROM(u);
+    };
+  </script>
+</body>
+</html>

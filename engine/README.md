@@ -17,10 +17,39 @@ the gen1recomp/love.js build under `docs/`; nothing here affects it.
   the emulator's PPU state. See `spike.js`. ✅ Verified: the title-screen
   Blastoise (which lives in the BG tilemap) reconstructs correctly from the
   emulator's internal map + tile data.
-- **Phase 1 — Flat WebGL renderer.** Upload the 256×256 BG tile surface + sprite
-  list to WebGL and draw it flat, matching the emulator.
-- **Phase 2 — 3D.** Project the BG plane into perspective; keep sprites upright
-  and the window/HUD flat on top. Camera + tilt controls.
+- **Phase 1 — Flat WebGL renderer (IN PROGRESS).** `web/` runs the core live in
+  the browser and draws the scene as SEPARATE layers of textured WebGL geometry
+  — a 256×256 BG "ground plane" quad (scrolled by SCX/SCY), one quad per OAM
+  sprite, and a window/HUD quad — under an orthographic camera so it matches the
+  emulator. Playable via keyboard. ✅ BG plane + sprites verified against the
+  emulator (the title-screen Blastoise + sprites composite correctly). ⚠️ The
+  window layer and some intro screens show artifacts from mid-frame raster
+  tricks (per-scanline SCY/WY changes) — the SAME limitation Phase 0 flagged.
+  The overworld (our 3D target) uses no such tricks, so it renders cleanly;
+  intro/title/menu raster effects are a later refinement.
+- **Phase 2 — 3D.** Keep the exact same layers but project the BG plane into
+  perspective, and — per the design note below — stand the sprite quads upright
+  with a ground shadow (billboard 2.5D), with per-pixel voxelization as an
+  optional upgrade. Camera + tilt controls.
+
+### Sprites in 3D (design note)
+
+The 3D read comes from **shadows + perspective**, not from the sprites having
+real geometry. Plan: billboard each 2D sprite upright on the tilted ground with
+a soft drop-shadow ellipse (cheap, convincing — Paper Mario / Octopath "2.5D").
+Optional upgrade: **voxelize** a sprite by treating each pixel as an extruded
+cube, yielding a genuine blocky 3D model generated at runtime from the same VRAM
+we already read. Hand-authored / AI meshes are out of scope for an offline,
+deterministic, thousands-of-sprites PWA.
+
+### web/ — run it
+
+```
+cd engine && npm install && ./web/build-core.sh   # bundles the core (gitignored)
+python3 -m http.server 8091 --directory web        # then open localhost:8091
+```
+`web/engine.js` is the whole renderer; `web/gbcore.bundle.js` is the vendored
+core (built, not committed).
 - **Phase 3 — Integration.** Input, audio (APU), and battery saves (SRAM) into
   the existing shell/PWA; package offline.
 - **Phase 4 — Harden + smoke gate**, like the current build has.
