@@ -6,8 +6,9 @@
 // pipeline reacts to a dropped file.
 //
 // Tier 2 (when the TEST_ROM_B64 secret is set to a base64 1 MiB US R/B/Y ROM):
-// imports it and asserts the game extracts and boots into play WITHOUT crashing
-// — this is the tier that would have caught the bit/restart/audio regressions.
+// imports it, boots into play, then DRIVES real input (d-pad, A/B, Start, and
+// the tilt keybind) and asserts nothing crashes — this is the tier that would
+// have caught the bit/restart/audio and the Mode-7 tilt regressions.
 //
 // Env:
 //   BASE_URL       site to test (default http://127.0.0.1:8080)
@@ -75,9 +76,25 @@ if (process.env.TEST_ROM_B64 || process.env.TEST_ROM_PATH) {
   // Extraction + the restart/reload into the game can take a while; watch for a
   // crash the whole time (the shell auto-opens #crash on any engine error).
   await page.waitForTimeout(25000);
+
+  // Drive real input through the running game. This exercises the input ->
+  // update -> render loop and the tilt keybind — the code paths that crashed on
+  // device (queueable audio on advance, the tilt renderer) but that a passive
+  // "watch it boot" test never touches. Keys: z=A, x=B, arrows=d-pad,
+  // Enter=Start, 3=cycle the Mode-7 tilt. LÖVE's own listeners are on the
+  // window, so just focus the page and press.
+  await page.bringToFront();
+  const combos = ['z', 'z', 'Enter', 'z', 'ArrowDown', 'z', 'ArrowRight',
+                  'ArrowUp', 'ArrowLeft', 'x', 'z', '3', 'z', '3', 'ArrowDown', '3'];
+  for (const key of combos) {
+    await page.keyboard.press(key, { delay: 40 });
+    await page.waitForTimeout(250);
+  }
+  await page.waitForTimeout(2000);
+
   const crashed = await page.$eval('#crash', (el) => el.classList.contains('show')).catch(() => false);
   const fatal = errors.some((e) => /out of bounds|abort|attempt to index|nil value|not a function/i.test(e));
-  if (crashed || fatal) fail('real-ROM extract/boot crashed:\n' + errors.slice(0, 8).join('\n'));
+  if (crashed || fatal) fail('real-ROM boot/input crashed:\n' + errors.slice(0, 8).join('\n'));
   tier2 = true;
 }
 
