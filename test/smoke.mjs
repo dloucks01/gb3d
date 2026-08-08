@@ -59,9 +59,11 @@ if (!consumed) fail('import pipeline never consumed the dropped ROM (JS->FS->Lua
 
 // ---- Tier 2: full boot-into-game with a real ROM (optional) -----------------
 let tier2 = false;
-if (process.env.TEST_ROM_B64) {
-  const rom = Buffer.from(process.env.TEST_ROM_B64, 'base64');
-  if (rom.length !== 1024 * 1024) fail(`TEST_ROM_B64 decoded to ${rom.length} bytes, expected 1048576`);
+if (process.env.TEST_ROM_B64 || process.env.TEST_ROM_PATH) {
+  const rom = process.env.TEST_ROM_PATH
+    ? fs.readFileSync(process.env.TEST_ROM_PATH)                 // local: a .gb file path
+    : Buffer.from(process.env.TEST_ROM_B64, 'base64');          // CI: base64 secret
+  if (rom.length !== 1024 * 1024) fail(`test ROM is ${rom.length} bytes, expected 1048576`);
   const romPath = path.join(os.tmpdir(), 'gb3d_smoke_real.gb');
   fs.writeFileSync(romPath, rom);
 
