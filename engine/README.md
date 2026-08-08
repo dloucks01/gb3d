@@ -49,6 +49,18 @@ cube, yielding a genuine blocky 3D model generated at runtime from the same VRAM
 we already read. Hand-authored / AI meshes are out of scope for an offline,
 deterministic, thousands-of-sprites PWA.
 
+### Color & shading
+
+Rendering is colorized with the games' authentic **Super Game Boy palettes**
+(from `pret/pokered` `data/sgb`): the background uses the current map's area
+palette (read from `wCurMap` at `0xD35E` — Pallet Town / Red's house =
+`PAL_PALLET`, routes = `PAL_ROUTE`, etc.), overworld characters use a warm
+skin/red OBJ palette, and the text box uses a crisp UI palette. A subtle
+depth-darkening on the tilted ground reinforces the 3D. The per-species mon
+palettes (`PAL_REDMON`/`GREENMON`/`BLUEMON`/…) are captured in `MON` for battle
+sprites — activating those needs battle detection + a species→palette table
+(next step). Palette RGB is authentic SGB (5-bit expanded to 8-bit).
+
 ### web/ — run it
 
 ```

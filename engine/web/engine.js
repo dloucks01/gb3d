@@ -11,7 +11,57 @@
 
 (() => {
   const GBW = 160, GBH = 144;
-  const SHADE = [255, 170, 85, 0];               // DMG light->dark, baked to gray
+  // Authentic Super Game Boy colorization (from pret/pokered data/sgb): one
+  // 4-color palette per map/area, plus per-species mon palettes. 5-bit (0-31)
+  // channels expanded to 8-bit. Color index maps through the game's BGP/OBP.
+  const c5 = (v) => (v << 3) | (v >> 2);
+  const P = (a) => a.map(([r, g, b]) => [c5(r), c5(g), c5(b)]);
+  const SGB = {
+    PALLET:   P([[31,29,31],[25,28,27],[20,26,31],[3,2,2]]),
+    ROUTE:    P([[31,29,31],[21,28,11],[20,26,31],[3,2,2]]),
+    VIRIDIAN: P([[31,29,31],[17,26,3],[20,26,31],[3,2,2]]),
+    PEWTER:   P([[31,29,31],[23,25,16],[20,26,31],[3,2,2]]),
+    CERULEAN: P([[31,29,31],[17,20,30],[20,26,31],[3,2,2]]),
+    LAVENDER: P([[31,29,31],[27,20,27],[20,26,31],[3,2,2]]),
+    VERMILION:P([[31,29,31],[30,18,0],[20,26,31],[3,2,2]]),
+    CELADON:  P([[31,29,31],[16,30,22],[20,26,31],[3,2,2]]),
+    FUCHSIA:  P([[31,29,31],[31,15,22],[20,26,31],[3,2,2]]),
+    CINNABAR: P([[31,29,31],[26,10,6],[20,26,31],[3,2,2]]),
+    INDIGO:   P([[31,29,31],[22,14,24],[20,26,31],[3,2,2]]),
+    SAFFRON:  P([[31,29,31],[27,27,3],[20,26,31],[3,2,2]]),
+    CAVE:     P([[31,29,31],[21,14,9],[18,24,22],[3,2,2]]),
+    GRAY:     P([[31,29,31],[26,21,22],[15,15,18],[3,2,2]]),
+  };
+  const TOWN = [SGB.PALLET, SGB.VIRIDIAN, SGB.PEWTER, SGB.CERULEAN, SGB.LAVENDER,
+                SGB.VERMILION, SGB.CELADON, SGB.FUCHSIA, SGB.CINNABAR, SGB.INDIGO, SGB.SAFFRON];
+  // Per-species mon palettes (pokered data/sgb) — each Gen 1 species maps to one
+  // of these. Reserved for battle-sprite coloring (needs battle detection + the
+  // species->palette table); the overworld doesn't use them.
+  const MON = {
+    MEW:   P([[31,29,31],[30,22,17],[16,14,19],[3,2,2]]),
+    BLUE:  P([[31,29,31],[18,20,27],[11,15,23],[3,2,2]]),
+    RED:   P([[31,29,31],[31,20,10],[26,10,6],[3,2,2]]),
+    CYAN:  P([[31,29,31],[21,25,29],[14,19,25],[3,2,2]]),
+    PURPLE:P([[31,29,31],[27,22,24],[21,15,23],[3,2,2]]),
+    BROWN: P([[31,29,31],[28,20,15],[21,14,9],[3,2,2]]),
+    GREEN: P([[31,29,31],[20,26,16],[9,20,11],[3,2,2]]),
+    PINK:  P([[31,29,31],[30,22,24],[28,15,21],[3,2,2]]),
+    YELLOW:P([[31,29,31],[31,28,14],[26,20,0],[3,2,2]]),
+    GRAY:  P([[31,29,31],[26,21,22],[15,15,18],[3,2,2]]),
+  };
+  void MON;
+  // Overworld character (OBJ) palette — warm skin/red so trainers read right.
+  const OBJ_OW = P([[0,0,0],[31,28,24],[31,14,8],[3,2,2]]);   // idx0 transparent
+  // Clean UI palette for the window/text box so text stays crisp.
+  const PAL_UI = [[255,255,255],[176,176,176],[88,88,88],[0,0,0]];
+  // Pick a background palette from the current map id (SetPal_Overworld logic):
+  // towns 0-10 use their own palette, routes use PAL_ROUTE, indoor maps fall
+  // back to Pallet's palette (the early game is all Pallet-adjacent).
+  function bgPaletteFor(curMap) {
+    if (curMap <= 10) return TOWN[curMap];
+    if (curMap >= 12 && curMap <= 36) return SGB.ROUTE;
+    return SGB.PALLET;
+  }
   const TILT_LEVELS = [0, 15, 35, 50];
   const CAM_DIST = 174, FOV = 45 * Math.PI / 180; // D & fov chosen so tilt 0 frames 160x144
   const SLAB_DEPTH = 3;                           // slab thickness (world units) — the "extrusion"
@@ -40,13 +90,15 @@
 
   // ---- GL program (u_mvp * vec3 pos) ---------------------------------------
   const vs = `#version 300 es
-    in vec3 a_pos; in vec2 a_uv; uniform mat4 u_mvp; out vec2 v_uv;
-    void main(){ v_uv=a_uv; gl_Position=u_mvp*vec4(a_pos,1.0); }`;
+    in vec3 a_pos; in vec2 a_uv; uniform mat4 u_mvp; out vec2 v_uv; out float v_wz;
+    void main(){ v_uv=a_uv; v_wz=a_pos.z; gl_Position=u_mvp*vec4(a_pos,1.0); }`;
   const fs = `#version 300 es
-    precision highp float; in vec2 v_uv; uniform sampler2D u_tex;
-    uniform float u_keyed, u_alpha; uniform vec3 u_tint; out vec4 o;
+    precision highp float; in vec2 v_uv; in float v_wz; uniform sampler2D u_tex;
+    uniform float u_keyed, u_alpha, u_depthShade; uniform vec3 u_tint; out vec4 o;
     void main(){ vec4 c=texture(u_tex,v_uv); if(u_keyed>0.5 && c.a<0.5) discard;
-      o=vec4(c.rgb*u_tint, c.a*u_alpha); }`;
+      // subtle depth darkening on the ground: far edge (small z) reads darker
+      float s = (u_depthShade>0.5) ? mix(0.72, 1.0, clamp(v_wz/144.0,0.0,1.0)) : 1.0;
+      o=vec4(c.rgb*u_tint*s, c.a*u_alpha); }`;
   const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o);
     if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
   const prog = gl.createProgram();
@@ -56,7 +108,7 @@
   const loc = { pos: gl.getAttribLocation(prog, 'a_pos'), uv: gl.getAttribLocation(prog, 'a_uv'),
     mvp: gl.getUniformLocation(prog, 'u_mvp'), tex: gl.getUniformLocation(prog, 'u_tex'),
     keyed: gl.getUniformLocation(prog, 'u_keyed'), alpha: gl.getUniformLocation(prog, 'u_alpha'),
-    tint: gl.getUniformLocation(prog, 'u_tint') };
+    tint: gl.getUniformLocation(prog, 'u_tint'), depthShade: gl.getUniformLocation(prog, 'u_depthShade') };
   const vbo = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
   gl.enableVertexAttribArray(loc.pos); gl.vertexAttribPointer(loc.pos, 3, gl.FLOAT, false, 20, 0);
@@ -88,9 +140,10 @@
   let mvp = orthoGB;
   function setMVP(m) { mvp = m; gl.uniformMatrix4fv(loc.mvp, false, new Float32Array(m)); }
   // Draw a quad from 4 world corners p0..p3 (TL,TR,BR,BL) with matching uvs.
-  function drawQuad(tex, p, uv, { keyed = false, alpha = 1, tint = [1,1,1] } = {}) {
+  function drawQuad(tex, p, uv, { keyed = false, alpha = 1, tint = [1,1,1], depthShade = false } = {}) {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.uniform1f(loc.keyed, keyed ? 1 : 0); gl.uniform1f(loc.alpha, alpha); gl.uniform3fv(loc.tint, tint);
+    gl.uniform1f(loc.depthShade, depthShade ? 1 : 0);
     const d = new Float32Array([
       p[0][0],p[0][1],p[0][2], uv[0][0],uv[0][1],  p[1][0],p[1][1],p[1][2], uv[1][0],uv[1][1],  p[2][0],p[2][1],p[2][2], uv[2][0],uv[2][1],
       p[0][0],p[0][1],p[0][2], uv[0][0],uv[0][1],  p[2][0],p[2][1],p[2][2], uv[2][0],uv[2][1],  p[3][0],p[3][1],p[3][2], uv[3][0],uv[3][1]]);
@@ -110,13 +163,13 @@
       for (let x = 0; x < 8; x++) { const b = 7 - x; out[y*8+x] = ((lo>>b)&1) | (((hi>>b)&1)<<1); } }
   }
   const pal = (p, ci) => (p >> (ci*2)) & 3;
-  function decodeMap(mapOff, signed, palReg, buf) {
+  function decodeMap(mapOff, signed, palReg, buf, palette) {
     const map = core.BGCHRBank1;
     for (let ty = 0; ty < 32; ty++) for (let tx = 0; tx < 32; tx++) {
       tilePx(map[mapOff + ty*32 + tx] & 0xff, !signed, tmp);
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        const s = SHADE[pal(palReg, tmp[y*8+x])]; const o = ((ty*8+y)*256 + (tx*8+x)) * 4;
-        buf[o]=buf[o+1]=buf[o+2]=s; buf[o+3]=255;
+        const col = palette[pal(palReg, tmp[y*8+x])]; const o = ((ty*8+y)*256 + (tx*8+x)) * 4;
+        buf[o]=col[0]; buf[o+1]=col[1]; buf[o+2]=col[2]; buf[o+3]=255;
       }
     }
   }
@@ -154,7 +207,7 @@
   }
   // Composite a cluster's sprites into one RGBA texture.
   const clusterTexPool = Array.from({ length: 24 }, () => mkTex());
-  function compositeCluster(box, objSize, OBP0, OBP1, texObj) {
+  function compositeCluster(box, objSize, OBP0, OBP1, texObj, objPalette) {
     const W = box.x1 - box.x0, H = box.y1 - box.y0, px = new Uint8Array(W * H * 4);
     for (const s of box.items) {
       const fY = s.attr & 0x40, fX = s.attr & 0x20, opal = (s.attr & 0x10) ? OBP1 : OBP0;
@@ -164,8 +217,8 @@
         const ci = sp[sr * 8 + sc]; if (ci === 0) continue;
         const dx = (s.sx - box.x0) + col, dy = (s.sy - box.y0) + row;
         if (dx < 0 || dx >= W || dy < 0 || dy >= H) continue;
-        const oo = (dy * W + dx) * 4, v = SHADE[pal(opal, ci)];
-        px[oo] = px[oo+1] = px[oo+2] = v; px[oo+3] = 255;
+        const oo = (dy * W + dx) * 4, v = objPalette[pal(opal, ci)];
+        px[oo] = v[0]; px[oo+1] = v[1]; px[oo+2] = v[2]; px[oo+3] = 255;
       }
     }
     gl.bindTexture(gl.TEXTURE_2D, texObj);
@@ -190,6 +243,7 @@
     const bgOn = (LCDC & 1) !== 0, objOn = (LCDC & 2) !== 0, objSize = (LCDC & 4) ? 16 : 8;
     const bgMapOff = (LCDC & 8) ? 0x400 : 0x000, winMapOff = (LCDC & 0x40) ? 0x400 : 0x000;
     const signed = (LCDC & 0x10) === 0, winOn = (LCDC & 0x20) !== 0;
+    const bgPal = bgPaletteFor(rd(0xd35e));        // SGB area palette from wCurMap
 
     resize();
     gl.clearColor(0.02, 0.03, 0.05, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -205,12 +259,12 @@
     // --- ground plane (BG), depth-written ---
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND);
     if (bgOn) {
-      decodeMap(bgMapOff, signed, BGP, bgBuf);
+      decodeMap(bgMapOff, signed, BGP, bgBuf, bgPal);
       gl.bindTexture(gl.TEXTURE_2D, bgTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, bgBuf);
       const u0 = SCX/256, v0 = SCY/256, u1 = (SCX+GBW)/256, v1 = (SCY+GBH)/256;
       drawQuad(bgTex, [[0,0,0],[GBW,0,0],[GBW,0,GBH],[0,0,GBH]],
-        [[u0,v0],[u1,v0],[u1,v1],[u0,v1]]);
+        [[u0,v0],[u1,v0],[u1,v1],[u0,v1]], { depthShade: tiltDeg > 0 });
     }
 
     // --- sprites: shadows then standing slabs ---
@@ -218,7 +272,7 @@
       const boxes = readSpriteClusters(objSize, OBP0, OBP1)
         .sort((a, b) => a.y1 - b.y1);                 // far (small y) first for clean overlap
       const metas = boxes.map((box, i) => ({ box, tex: clusterTexPool[i % clusterTexPool.length],
-        dim: compositeCluster(box, objSize, OBP0, OBP1, clusterTexPool[i % clusterTexPool.length]) }));
+        dim: compositeCluster(box, objSize, OBP0, OBP1, clusterTexPool[i % clusterTexPool.length], OBJ_OW) }));
 
       // shadows (blended, no depth write)
       gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
@@ -260,7 +314,7 @@
     if (winOn && !winFlattens && !window.__groundOnly && !window.__skipWindow && WX <= 166 && WY <= GBH - 1) {
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(false);
       setMVP(orthoGB);
-      decodeMap(winMapOff, signed, BGP, winBuf);
+      decodeMap(winMapOff, signed, BGP, winBuf, PAL_UI);
       gl.bindTexture(gl.TEXTURE_2D, winTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, winBuf);
       const x0 = Math.max(0, WX - 7), y0 = Math.max(0, WY);
