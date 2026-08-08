@@ -133,7 +133,22 @@
 
     // ---- Diagnostics ring buffer: surface crashes on a phone (no devtools) --
     var __log = [];
-    function logLine(s){ try { __log.push(String(s)); if (__log.length > 500) __log.shift(); } catch (e) {} }
+    var __crashShown = false;
+    function logLine(s){
+      try {
+        s = String(s);
+        __log.push(s); if (__log.length > 500) __log.shift();
+        // Auto-surface the overlay the first time the engine prints something
+        // error-shaped. Covers boot-time Lua errors that neither abort the wasm
+        // nor throw a JS error (LÖVE catches them and only prints), so nothing
+        // else would reveal them — and the ☰ menu isn't up yet at boot.
+        if (!__crashShown &&
+            /error|traceback|attempt to|abort|nil value|stack overflow|not a function|failed|no such/i.test(s)) {
+          __crashShown = true;
+          setTimeout(function(){ showCrash('Engine error'); }, 500);
+        }
+      } catch (e) {}
+    }
 
     // Size the drawing buffer to the device so rendering is crisp, not scaled.
     // The DPR is capped at 2 by default (perf); the opt-in High-res setting
@@ -386,6 +401,9 @@
     var crashEl = document.getElementById('crash');
     var crashLogEl = document.getElementById('crashLog');
     var crashTitleEl = document.getElementById('crashTitle');
+    // Keep the ☰ menu (and the Engine log inside it) reachable from boot, so a
+    // crash before the ROM launcher appears can still be inspected.
+    menuFab.style.display = 'block';
     function showCrash(title){
       try {
         crashTitleEl.textContent = title || 'Engine log';
