@@ -7,7 +7,7 @@
  * All URLs are relative to this file's directory, so the same worker works no
  * matter what subpath GitHub Pages serves the build under.
  */
-const CACHE = 'gb3d-1c0e2a48e0a4';
+const CACHE = 'gb3d-bce985ec9169';
 
 const ASSETS = [
   '.', 'index.html',
