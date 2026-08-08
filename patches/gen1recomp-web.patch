@@ -190,6 +190,27 @@ index 0000000..11aef67
 +end
 +
 +return bit
+diff --git a/src/core/ChipAudio.lua b/src/core/ChipAudio.lua
+index 520961e..e019d1d 100644
+--- a/src/core/ChipAudio.lua
++++ b/src/core/ChipAudio.lua
+@@ -182,7 +182,16 @@ end
+ 
+ local musicGen = 0
+ 
++-- Streaming music uses love.audio.newQueueableSource + a per-frame :queue(),
++-- which emscripten's OpenAL (love.js) mishandles: queuing PCM there corrupts
++-- the audio thread and crashes the whole app mid-frame with "Out of bounds
++-- memory access". Disable the chiptune music path on Web -- the game runs with
++-- static SFX and cries (which love.js handles) but no background music.
++local MUSIC_DISABLED = love and love.system and love.system.getOS
++  and love.system.getOS() == "Web"
++
+ function ChipAudio.playMusic(data, header, allowLoops)
++  if MUSIC_DISABLED then return nil end
+   if not ensureWorker() then
+     return playMusicSync(data, header, allowLoops)
+   end
 diff --git a/src/core/HostShell.lua b/src/core/HostShell.lua
 index 0c39e3c..bd98a5e 100644
 --- a/src/core/HostShell.lua
