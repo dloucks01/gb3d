@@ -1,19 +1,20 @@
 name: Deploy gb3d to Pages
 
-# Optional CI path: builds the web app from source (clones gen1recomp @ the
-# pinned commit, applies the web patch, runs love.js) and deploys to GitHub
-# Pages. To use it, set Settings → Pages → Source: "GitHub Actions".
+# Publishes the committed, prebuilt site in docs/ to GitHub Pages.
 #
-# The simpler alternative needs no CI: Settings → Pages → "Deploy from a
-# branch" → main, folder /docs (the prebuilt site is committed there).
+# We deliberately do NOT rebuild from source here: love.js packaging is
+# non-deterministic (a fresh build produces a different game.data every run),
+# so building on CI made each deploy a different payload and the CDN served an
+# inconsistent mix across deploys. Instead the site is built + verified locally,
+# committed to docs/, and this workflow just uploads that exact directory —
+# deterministic, and identical to what "Deploy from a branch → /docs" would
+# serve. To refresh the build, run ./build.sh --pages locally and commit docs/.
 
 on:
   push:
     branches: [ main ]
     paths:
-      - 'shell/**'
-      - 'patches/**'
-      - 'build.sh'
+      - 'docs/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -27,30 +28,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Build web app (clone + patch gen1recomp, run love.js)
-        run: bash build.sh
-      - uses: actions/configure-pages@v5
-        # enablement lets the first workflow run turn Pages on (source =
-        # GitHub Actions) without visiting Settings → Pages by hand.
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        # enablement turns Pages on (source = GitHub Actions) on the first run
+        # without visiting Settings → Pages by hand.
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
       - id: deployment
         uses: actions/deploy-pages@v4
