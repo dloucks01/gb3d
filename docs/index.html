@@ -54,6 +54,18 @@
       color: #dff1fb; background: rgba(42,111,134,.35); cursor: pointer; }
     #menu button:active { transform: translateY(1px); }
     #menu .note { font-size: 11px; opacity: .6; padding: 2px 4px 4px; line-height: 1.35; }
+    /* Crash / engine-log overlay — readable on a phone with no devtools. */
+    #crash { position: fixed; inset: 0; z-index: 20; background: #0a0f14; color: #cfe6f4;
+      display: none; flex-direction: column;
+      padding: calc(env(safe-area-inset-top,0px) + 12px) 12px calc(env(safe-area-inset-bottom,0px) + 12px); }
+    #crash.show { display: flex; }
+    #crash h2 { margin: 2px 0 8px; font-size: 15px; color: #ff9a9a; }
+    #crash pre { flex: 1; overflow: auto; font: 11px/1.35 ui-monospace, Menlo, monospace;
+      white-space: pre-wrap; word-break: break-word; background: #060b10; color: #bfe0f0;
+      padding: 10px; border-radius: 8px; margin: 0; -webkit-user-select: text; user-select: text; }
+    #crash .crow { display: flex; gap: 8px; margin-top: 8px; }
+    #crash .crow button { flex: 1; -webkit-appearance: none; appearance: none; border: 0; border-radius: 8px;
+      padding: 12px; font-size: 14px; font-weight: 700; color: #06222f; background: #58c3e3; }
   </style>
 </head>
 <body>
@@ -83,9 +95,21 @@
     <button id="mRestore">⬆︎&nbsp; Restore save</button>
     <div class="note">Exports your imported game &amp; battery saves to a file, so
       progress survives clearing browser storage or moves to another device.</div>
+    <div class="sep" style="height:1px;background:rgba(42,111,134,.5);margin:2px 0"></div>
+    <button id="mLog">🧾&nbsp; Engine log</button>
+    <div class="note">Shows the engine's diagnostic output. If the game crashes or
+      freezes, open this and screenshot it.</div>
   </div>
 
   <div id="toast"></div>
+  <div id="crash">
+    <h2 id="crashTitle">Engine log</h2>
+    <pre id="crashLog"></pre>
+    <div class="crow">
+      <button id="crashCopy">Copy</button>
+      <button id="crashClose">Close</button>
+    </div>
+  </div>
   <input type="file" id="romInput" accept=".gb,.gbc,application/octet-stream">
   <input type="file" id="restoreInput" accept=".json,application/json">
 
@@ -107,6 +131,10 @@
       clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 3200);
     }
 
+    // ---- Diagnostics ring buffer: surface crashes on a phone (no devtools) --
+    var __log = [];
+    function logLine(s){ try { __log.push(String(s)); if (__log.length > 500) __log.shift(); } catch (e) {} }
+
     // Size the drawing buffer to the device so rendering is crisp, not scaled.
     // The DPR is capped at 2 by default (perf); the opt-in High-res setting
     // lifts the cap to the device's real ratio (sharper 3D, heavier).
@@ -125,7 +153,9 @@
     var Module = {
       arguments: ["./game.love"],
       INITIAL_MEMORY: 536870912,
-      printErr: (function(){ var f = console.error.bind(console); return f; })(),
+      printErr: function(t){ logLine(t); try { console.error(t); } catch (e) {} },
+      print: function(t){ logLine(t); try { console.log(t); } catch (e) {} },
+      onAbort: function(what){ logLine('ABORT: ' + what); showCrash('Engine stopped (fatal error / out of memory)'); },
       canvas: canvas,
       setStatus: function(text) {
         if (text) statusEl.textContent = text.replace('Downloading', 'Loading');
@@ -351,6 +381,31 @@
       restoreInput.value = '';
     });
     document.addEventListener('click', closeMenu);
+
+    // ---- Crash overlay: show captured engine/JS output on screen -----------
+    var crashEl = document.getElementById('crash');
+    var crashLogEl = document.getElementById('crashLog');
+    var crashTitleEl = document.getElementById('crashTitle');
+    function showCrash(title){
+      try {
+        crashTitleEl.textContent = title || 'Engine log';
+        crashLogEl.textContent = __log.slice(-250).join('\n') || '(no output captured yet)';
+        crashEl.classList.add('show');
+        crashLogEl.scrollTop = crashLogEl.scrollHeight;
+      } catch (e) {}
+    }
+    document.getElementById('crashClose').addEventListener('click', function(){ crashEl.classList.remove('show'); });
+    document.getElementById('crashCopy').addEventListener('click', function(){
+      try { navigator.clipboard.writeText(crashLogEl.textContent); toast('Log copied'); }
+      catch (e) { toast('Select the text, then Copy'); }
+    });
+    document.getElementById('mLog').addEventListener('click', function(){ closeMenu(); showCrash('Engine log'); });
+    window.addEventListener('error', function(e){
+      logLine('JS ERROR: ' + (e && (e.message || (e.error && e.error.message) || e.error)) +
+              (e && e.filename ? ' @ ' + e.filename + ':' + e.lineno : ''));
+      showCrash('JavaScript error');
+    });
+    window.addEventListener('unhandledrejection', function(e){ logLine('PROMISE REJECTION: ' + (e && e.reason)); });
 
     whenRunning(showPicker);
 
