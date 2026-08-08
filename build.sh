@@ -47,7 +47,9 @@ fi
 if ! command -v npx >/dev/null; then echo "error: Node/npx required" >&2; exit 1; fi
 if [ ! -x "$HERE/node_modules/.bin/love.js" ]; then
   say "installing love.js"
-  ( cd "$HERE" && npm init -y >/dev/null 2>&1 || true; npm install love.js >/dev/null 2>&1 )
+  # Pinned: an unpinned "npm install love.js" grabs latest, and a new love.js
+  # can change the generated love.js template our FS-expose sed depends on.
+  ( cd "$HERE" && npm init -y >/dev/null 2>&1 || true; npm install love.js@11.4.1 >/dev/null 2>&1 )
 fi
 
 # 3. Pack the engine into game.love (no ROM, no generated data).
