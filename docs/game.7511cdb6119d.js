@@ -20,8 +20,8 @@ Module.expectedDataFileDownloads++;
     } else {
       throw 'using preloaded data can only be done on a web page or in a web worker';
     }
-    var PACKAGE_NAME = 'game.data';
-    var REMOTE_PACKAGE_BASE = 'game.data';
+    var PACKAGE_NAME = 'game.7511cdb6119d.data';
+    var REMOTE_PACKAGE_BASE = 'game.7511cdb6119d.data';
     if (typeof Module['locateFilePackage'] === 'function' && !Module['locateFile']) {
       Module['locateFile'] = Module['locateFilePackage'];
       Module.printErr('warning: you defined Module.locateFilePackage, that has been renamed to Module.locateFile (using your locateFilePackage for now)');
@@ -235,10 +235,10 @@ Module.expectedDataFileDownloads++;
         for (i = 0; i < files.length; ++i) {
           DataRequest.prototype.requests[files[i].filename].onload();
         }
-        Module['removeRunDependency']('datafile_game.data');
+        Module['removeRunDependency']('datafile_game.7511cdb6119d.data');
 
       };
-      Module['addRunDependency']('datafile_game.data');
+      Module['addRunDependency']('datafile_game.7511cdb6119d.data');
 
       if (!Module.preloadResults) Module.preloadResults = {};
 
@@ -284,6 +284,6 @@ Module.expectedDataFileDownloads++;
     }
 
   }
-  loadPackage({"package_uuid":"7d8dc007-226e-4d37-a299-d3d90a957caf","remote_package_size":3037704,"files":[{"filename":"/game.love","crunched":0,"start":0,"end":3037704,"audio":false}]});
+  loadPackage({"package_uuid":"8699f6a6-c8cd-41d8-942f-fece8fa435d3","remote_package_size":3037704,"files":[{"filename":"/game.love","crunched":0,"start":0,"end":3037704,"audio":false}]});
 
 })();
