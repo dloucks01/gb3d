@@ -50,6 +50,11 @@ python3 -m http.server 8091 --directory web        # then open localhost:8091
 ```
 `web/engine.js` is the whole renderer; `web/gbcore.bundle.js` is the vendored
 core (built, not committed).
+
+**Controls:** arrows = d-pad, `Z` = A, `X` = B, `Enter` = Start, `Shift` =
+Select. **Turbo:** `1` / `2` / `3` set 1×/2×/3× speed (or tap the `1×` button to
+cycle); **hold `Space`** for momentary 3× turbo. Turbo emulates N frames per
+rendered frame, so game logic runs 2–3× faster while the display stays at 60fps.
 - **Phase 3 — Integration.** Input, audio (APU), and battery saves (SRAM) into
   the existing shell/PWA; package offline.
 - **Phase 4 — Harden + smoke gate**, like the current build has.

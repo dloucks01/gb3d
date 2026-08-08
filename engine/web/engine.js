@@ -63,6 +63,8 @@
 
   // ---- emulator + PPU read --------------------------------------------------
   let core = null, running = false;
+  let baseSpeed = 1, turboHeld = false;            // turbo: emulate N frames per render
+  const effSpeed = () => turboHeld ? Math.max(3, baseSpeed) : baseSpeed;
   const rd = (a) => core.memory[a] & 0xff;
 
   function tilePx(index, unsignedBase, out) {           // 8x8 color indices -> out[64]
@@ -88,7 +90,9 @@
 
   function frame() {
     if (!running || !core) return;
-    core.run();                                   // advance ~one frame
+    const n = effSpeed();
+    for (let i = 0; i < n; i++) core.run();        // turbo: N emulated frames, one render
+    window.__ranFrames = (window.__ranFrames || 0) + n;
     renderScene();
     tickFPS();
     requestAnimationFrame(frame);
@@ -161,12 +165,28 @@
   }
   let fpsT = 0, fpsN = 0; const fpsEl = document.getElementById('fps');
   function tickFPS() { fpsN++; const now = performance.now();
-    if (now - fpsT > 500) { fpsEl.textContent = Math.round(fpsN * 1000 / (now - fpsT)) + ' fps'; fpsT = now; fpsN = 0; } }
+    if (now - fpsT > 500) { const s = effSpeed();
+      fpsEl.textContent = Math.round(fpsN * 1000 / (now - fpsT)) + ' fps' + (s > 1 ? '  ·  ' + s + '×' : '');
+      fpsT = now; fpsN = 0; } }
+
+  // ---- turbo / speed --------------------------------------------------------
+  const speedBtn = document.getElementById('speed');
+  function setSpeed(v) { baseSpeed = Math.max(1, Math.min(3, v | 0)); if (speedBtn) speedBtn.textContent = baseSpeed + '×'; }
+  if (speedBtn) speedBtn.addEventListener('click', () => setSpeed(baseSpeed % 3 + 1));
+  window.__setSpeed = setSpeed;                    // test/introspection hook
+  window.__getSpeed = effSpeed;
 
   // ---- input ----------------------------------------------------------------
   const KEY = { ArrowRight: 0, ArrowLeft: 1, ArrowUp: 2, ArrowDown: 3, z: 4, x: 5, Shift: 6, Enter: 7 };
-  addEventListener('keydown', (e) => { const b = KEY[e.key]; if (b !== undefined && core) { core.JoyPadEvent(b, true); e.preventDefault(); } });
-  addEventListener('keyup',   (e) => { const b = KEY[e.key]; if (b !== undefined && core) { core.JoyPadEvent(b, false); e.preventDefault(); } });
+  addEventListener('keydown', (e) => {
+    if (e.key === '1' || e.key === '2' || e.key === '3') { setSpeed(+e.key); e.preventDefault(); return; }
+    if (e.key === 'Tab' || e.key === ' ') { turboHeld = true; e.preventDefault(); return; }   // hold to turbo (3×)
+    const b = KEY[e.key]; if (b !== undefined && core) { core.JoyPadEvent(b, true); e.preventDefault(); }
+  });
+  addEventListener('keyup', (e) => {
+    if (e.key === 'Tab' || e.key === ' ') { turboHeld = false; e.preventDefault(); return; }
+    const b = KEY[e.key]; if (b !== undefined && core) { core.JoyPadEvent(b, false); e.preventDefault(); }
+  });
 
   // ---- ROM load / boot ------------------------------------------------------
   window.__loadROM = (bytes) => {
