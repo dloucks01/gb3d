@@ -27,10 +27,17 @@ the gen1recomp/love.js build under `docs/`; nothing here affects it.
   tricks (per-scanline SCY/WY changes) — the SAME limitation Phase 0 flagged.
   The overworld (our 3D target) uses no such tricks, so it renders cleanly;
   intro/title/menu raster effects are a later refinement.
-- **Phase 2 — 3D.** Keep the exact same layers but project the BG plane into
-  perspective, and — per the design note below — stand the sprite quads upright
-  with a ground shadow (billboard 2.5D), with per-pixel voxelization as an
-  optional upgrade. Camera + tilt controls.
+- **Phase 2 — 3D (IN PROGRESS).** A pitched perspective camera tilts the BG
+  ground plane (0°/15°/35°/50°, press `T` or the HUD button). Overworld
+  characters are clustered from their OAM tiles and stood up as camera-facing
+  SLABS (with a little extrusion depth) rooted on the ground, each with a soft
+  drop-shadow. ✅ The ground tilt renders correctly at 100+fps; the player
+  stands on the tilted floor with a shadow. ⚠️ Known limit: the Gen1 overworld
+  keeps the LCD window enabled and raster-positions it, so a single-snapshot
+  read sees WY=0 (full screen); drawn flat that would cover the tilt, so when
+  tilted we skip a window reaching the upper screen (WY<72) and keep genuine
+  bottom text boxes. Flat mode (tilt 0, the default) draws every window at full
+  fidelity. Raster-aware WY (and more pronounced standees) are refinements.
 
 ### Sprites in 3D (design note)
 
@@ -55,6 +62,7 @@ core (built, not committed).
 Select. **Turbo:** `1` / `2` / `3` set 1×/2×/3× speed (or tap the `1×` button to
 cycle); **hold `Space`** for momentary 3× turbo. Turbo emulates N frames per
 rendered frame, so game logic runs 2–3× faster while the display stays at 60fps.
+**3D tilt:** press `T` (or the tilt button) to cycle 0°/15°/35°/50°.
 - **Phase 3 — Integration.** Input, audio (APU), and battery saves (SRAM) into
   the existing shell/PWA; package offline.
 - **Phase 4 — Harden + smoke gate**, like the current build has.
